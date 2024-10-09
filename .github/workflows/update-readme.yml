@@ -26,8 +26,9 @@ jobs:
         START_FROM=50000
         MAX_TO=99999
 
-        # Create an empty array to store the rows
+        # Create an empty array to store the rows and a list to track used ranges
         ROWS=()
+        DECLARED_RANGES=()
 
         # Generate and sort rows on the fly
         mapfile -t SORTED_ROWS < <(
@@ -45,26 +46,55 @@ jobs:
         )
 
         # Start building the table, keeping track of gaps
-        TABLE="| App | From | To |\n|------------------------------------|--------|--------|"
+        TABLE="| App | From | To | Conflict |\n|------------------------------------|--------|--------|-----------|"
         
         # Initialize the previous "to" to the starting point 50000
         PREV_TO=$((START_FROM - 1))
-        
+
+        # Function to check if ranges overlap
+        overlap() {
+          local range_from=$1
+          local range_to=$2
+          local existing_from=$3
+          local existing_to=$4
+
+          # Check if ranges overlap
+          if [ "$range_from" -le "$existing_to" ] && [ "$range_to" -ge "$existing_from" ]; then
+            return 0  # Overlap found
+          else
+            return 1  # No overlap
+          fi
+        }
+
         for row in "${SORTED_ROWS[@]}"; do
           FROM=$(echo "$row" | cut -d':' -f1)
           TO=$(echo "$row" | cut -d':' -f2)
           NAME=$(echo "$row" | cut -d':' -f3)
+
+          # Conflict detection for range overlap
+          CONFLICT=""
+          for declared_range in "${DECLARED_RANGES[@]}"; do
+            DECLARED_FROM=$(echo "$declared_range" | cut -d':' -f1)
+            DECLARED_TO=$(echo "$declared_range" | cut -d':' -f2)
+            if overlap "$FROM" "$TO" "$DECLARED_FROM" "$DECLARED_TO"; then
+              CONFLICT="⚠️"
+              break
+            fi
+          done
+
+          # Add the current range to the declared ranges list
+          DECLARED_RANGES+=("$FROM:$TO")
 
           # Check if there is a gap between the previous "to" and current "from"
           if [ "$PREV_TO" -lt "$((FROM - 1))" ]; then
             GAP_FROM=$((PREV_TO + 1))
             GAP_TO=$((FROM - 1))
             # Add an empty row for the gap
-            TABLE+="\n| (empty) | $GAP_FROM | $GAP_TO |"
+            TABLE+="\n| (empty) | $GAP_FROM | $GAP_TO | |"
           fi
 
-          # Add the current row
-          TABLE+="\n| $NAME | $FROM | $TO |"
+          # Add the current row with conflict info
+          TABLE+="\n| $NAME | $FROM | $TO | $CONFLICT |"
           
           # Update PREV_TO
           PREV_TO=$TO
@@ -74,7 +104,7 @@ jobs:
         if [ "$PREV_TO" -lt "$MAX_TO" ]; then
           GAP_FROM=$((PREV_TO + 1))
           GAP_TO=$MAX_TO
-          TABLE+="\n| (empty) | $GAP_FROM | $GAP_TO |"
+          TABLE+="\n| (empty) | $GAP_FROM | $GAP_TO | |"
         fi
 
         # Write the table to table.md
