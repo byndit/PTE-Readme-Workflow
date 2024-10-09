@@ -1,0 +1,34 @@
+{
+  "id": "47272960-da80-4d02-88dc-ab72d6987964",
+  "name": "App 2",
+  "publisher": "BEYONDIT GmbH",
+  "version": "2024.10.0.0",
+  "brief": "App 2",
+  "description": "App 2",
+  "privacyStatement": "https://beyondit.gmbh/datenschutz",
+  "EULA": "https://www.beyondit.gmbh/agb",
+  "help": "http://docs.beyond365.de/",
+  "contextSensitiveHelpUrl": "http://docs.beyond365.de/",
+  "url": "https://beyondit.gmbh",
+  "logo": "app.png",
+  "dependencies": [],
+  "screenshots": [],
+  "platform": "22.0.0.0",
+  "application": "22.0.0.0",
+  "idRanges": [
+    {
+      "from": 50390,
+      "to": 50499
+    }
+  ],
+  "resourceExposurePolicy": {
+    "allowDebugging": true,
+    "allowDownloadingSource": false,
+    "includeSourceInSymbolFile": false
+  },
+  "runtime": "12.0",
+  "features": [
+    "TranslationFile",
+    "NoImplicitWith"
+  ]
+}

@@ -1,0 +1,139 @@
+name: Update README with Table
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch: # Allows manual triggering of the workflow
+
+jobs:
+  update-readme:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v2
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v2
+      with:
+        node-version: '14'
+
+    - name: Generate repository folder information
+      id: generate_table
+      run: |
+        # Set the starting "from" value at 50000 and maximum at 99999
+        START_FROM=50000
+        MAX_TO=99999
+
+        # Create an empty array to store the rows
+        ROWS=()
+
+        # Generate and sort rows on the fly
+        mapfile -t SORTED_ROWS < <(
+          find . -maxdepth 2 -type f -name "app.json" -exec dirname {} \; | while IFS= read -r folder; do
+            # Extract "from", "to", and "name" values from app.json
+            FROM=$(grep -m 1 '"from":' "$folder/app.json" | sed 's/[^0-9]*//g')
+            TO=$(grep -m 1 '"to":' "$folder/app.json" | sed 's/[^0-9]*//g')
+            NAME=$(grep -m 1 '"name":' "$folder/app.json" | sed 's/.*"name": "\(.*\)".*/\1/')
+            
+            if [ "$FROM" ] && [ "$TO" ] && [ "$NAME" ]; then
+              # Print each row for sorting
+              echo "$FROM:$TO:$NAME"
+            fi
+          done | sort -t':' -k1,1n
+        )
+
+        # Start building the table, keeping track of gaps
+        TABLE="| App | From | To |\n|------------------------------------|--------|--------|"
+        
+        # Initialize the previous "to" to the starting point 50000
+        PREV_TO=$((START_FROM - 1))
+        
+        for row in "${SORTED_ROWS[@]}"; do
+          FROM=$(echo "$row" | cut -d':' -f1)
+          TO=$(echo "$row" | cut -d':' -f2)
+          NAME=$(echo "$row" | cut -d':' -f3)
+
+          # Check if there is a gap between the previous "to" and current "from"
+          if [ "$PREV_TO" -lt "$((FROM - 1))" ]; then
+            GAP_FROM=$((PREV_TO + 1))
+            GAP_TO=$((FROM - 1))
+            # Add an empty row for the gap
+            TABLE+="\n| (empty) | $GAP_FROM | $GAP_TO |"
+          fi
+
+          # Add the current row
+          TABLE+="\n| $NAME | $FROM | $TO |"
+          
+          # Update PREV_TO
+          PREV_TO=$TO
+        done
+
+        # Check if there's a gap between the last "to" and the maximum (99999)
+        if [ "$PREV_TO" -lt "$MAX_TO" ]; then
+          GAP_FROM=$((PREV_TO + 1))
+          GAP_TO=$MAX_TO
+          TABLE+="\n| (empty) | $GAP_FROM | $GAP_TO |"
+        fi
+
+        # Write the table to table.md
+        echo -e "$TABLE" > table.md
+        cat table.md
+      shell: bash
+
+    - name: Create README.md if not exists
+      run: |
+        if [ ! -f README.md ]; then
+          # Use echo -e to interpret \n as new lines
+          echo -e "# This project contains several PTE modules." > README.md
+        fi
+
+    - name: Update README.md with placeholder
+      run: |
+        # Log the current state of README.md for troubleshooting
+        echo "Current README.md before update:"
+        cat README.md
+
+        # Remove the old table (from start_table comment to end_table comment) and insert placeholder
+        sed -i '/\[comment\]: <> (start_table)/,/\[comment\]: <> (end_table)/c [TABLE_PLACEHOLDER]' README.md
+        
+        # Verify if the placeholder has been inserted
+        echo "README.md after inserting placeholder:"
+        cat README.md
+        
+        # Insert the new table with the start and end comments around the placeholder
+        sed -i '/\[TABLE_PLACEHOLDER\]/{
+          a [comment]: <> (start_table)\n
+          r table.md
+          a \\
+          a [comment]: <> (end_table)
+          d
+        }' README.md
+        
+        # Log the updated README.md to check if changes are made
+        echo "README.md after updating table:"
+        cat README.md
+        
+        # Forcefully stage README.md for commit
+        git add README.md
+        git diff --cached
+        
+        # Check if any changes have been made
+        git status
+
+    - name: Check if README.md has changed
+      id: check_diff
+      run: |
+        # Check if README.md has changes
+        git diff --exit-code README.md || echo "README.md has been modified"
+
+    - name: Commit and push changes if README.md has changed
+      if: steps.check_diff.outcome == 'success'
+      run: |
+        git config --local user.email "github-actions[bot]@users.noreply.github.com"
+        git config --local user.name "GitHub Actions Bot"
+        git commit -m "Update README.md with generated table" || echo "No changes to commit"
+        git push || echo "Nothing to push"
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
